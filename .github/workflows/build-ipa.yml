@@ -1,0 +1,52 @@
+name: Build unsigned IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect project folder
+        id: detect
+        run: |
+          if [ -f "PhotoCleaner.xcodeproj/project.pbxproj" ]; then
+            echo "dir=." >> "$GITHUB_OUTPUT"
+          elif [ -f "PhotoCleaner/PhotoCleaner.xcodeproj/project.pbxproj" ]; then
+            echo "dir=PhotoCleaner" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::找不到 PhotoCleaner.xcodeproj"
+            exit 1
+          fi
+
+      - name: Build without code signing
+        run: |
+          xcodebuild \
+            -project "${{ steps.detect.outputs.dir }}/PhotoCleaner.xcodeproj" \
+            -scheme PhotoCleaner \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            build
+
+      - name: Pack into unsigned IPA
+        run: |
+          mkdir -p ipa/Payload
+          cp -R build/Build/Products/Release-iphoneos/PhotoCleaner.app ipa/Payload/
+          cd ipa
+          zip -qry ../PhotoCleaner-unsigned.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoCleaner-unsigned-ipa
+          path: PhotoCleaner-unsigned.ipa
+          retention-days: 30
